@@ -32,7 +32,9 @@ function unitStats(u, p) {
   const tasks = allTasks(u);
   const sent = tasks.filter((t) => p.answers[t.id]).length;
   const pct = Math.round(((done / u.lessons.length) * 0.6 + (q ? 0.25 : 0) + (p.reflect[u.id]?.done ? 0.15 : 0)) * 100);
-  return { done, total: u.lessons.length, quiz: q, sent, tasks: tasks.length, pct };
+  const pr = u.lessons.map((l) => p.practice?.[l.id]).filter(Boolean);
+  const prac = pr.length ? Math.round((pr.reduce((a, x) => a + x.best / x.total, 0) / pr.length) * 100) : null;
+  return { done, total: u.lessons.length, quiz: q, sent, tasks: tasks.length, pct, prac, pracDone: pr.length };
 }
 function overall(p) {
   const s = UNITS.map((u) => unitStats(u, p));
@@ -143,7 +145,7 @@ function viewHome() {
       <img src="${u.image}" alt="" loading="lazy">
       <div class="uc-body"><span class="tag">Unit ${u.num}</span><h3>${esc(u.title)}</h3><p>${esc(u.bigQuestion)}</p>
       <div class="sk">${u.skills.map((k) => SKILLS.find((x) => x.id === k).icon).join(" ")}</div>
-      ${bar(s.pct, u.color)}<small>${s.done}/${s.total} pelajaran · kuis ${s.quiz ? s.quiz.best + "/" + s.quiz.total : "belum"}</small></div></a>`;
+      ${bar(s.pct, u.color)}<small>${s.done}/${s.total} pelajaran · kuis ${s.quiz ? s.quiz.best + "/" + s.quiz.total : "belum"}${s.prac != null ? ` · latihan ${s.prac}%` : ""}</small></div></a>`;
   }).join("")}</div>`, "#/");
 }
 
@@ -155,13 +157,13 @@ function viewUnit(u) {
   <a class="back" href="${isS ? "#/" : "#/materi"}">← Semua unit</a>
   <section class="opener" style="--c:${u.color}">
     <img src="${u.image}" alt="">
-    <div><span class="tag">Unit ${u.num}</span><h1>${esc(u.title)}</h1><p class="bq"><b>Big Question:</b> ${esc(u.bigQuestion)}</p>
+    <div><span class="tag">Unit ${u.num}</span><h1>${esc(u.title)}</h1><p class="bq" data-speak><b>Big Question:</b> ${esc(u.bigQuestion)} ${sayBtn("")}</p>
     ${u.opener ? `<p>${esc(u.opener)}</p>` : ""}${u.intro ? `<p>${esc(u.intro)}</p>` : ""}
     ${isS ? `${bar(s.pct, u.color)}<small>${s.pct}% selesai</small>` : ""}</div>
   </section>
   <div class="grid2">
-    <div class="box"><h3>In this unit, I will learn to:</h3><ul class="goals">${u.goals.map((g) => `<li>${esc(g)}</li>`).join("")}</ul></div>
-    <div class="box"><h3>Word Bank</h3><div class="words">${u.wordBank.map((w) => `<span>${esc(w)}</span>`).join("")}</div></div>
+    <div class="box" data-speak><h3>In this unit, I will learn to: ${sayBtn()}</h3><ul class="goals">${u.goals.map((g) => `<li>${esc(g)}</li>`).join("")}</ul></div>
+    <div class="box"><h3>Word Bank <small class="muted">— klik kata untuk mendengar 🔊</small></h3><div class="words">${u.wordBank.map((w) => `<span data-word="${esc(w)}" role="button" tabindex="0">🔊 ${esc(w)}</span>`).join("")}</div></div>
   </div>
   <h2 class="sec">Langkah belajar</h2>
   <ol class="steps">
@@ -189,25 +191,25 @@ function taskBox(id, fields = [{ k: "text", label: "Jawabanku" }], { rows = 5 } 
 // ───────────────────────────── blok materi
 function renderBlock(b, u) {
   switch (b.t) {
-    case "p": return `<p>${b.html}</p>`;
-    case "list": return b.html;
-    case "read": return `<div class="read"><h4>📖 Read & Discover: ${esc(b.title)}</h4>${b.html}</div>`;
+    case "p": return `<p data-speak class="spk">${b.html} ${sayBtn("")}</p>`;
+    case "list": return `<div data-speak class="spk">${sayBtn()}${b.html}</div>`;
+    case "read": return `<div class="read" data-speak><h4>📖 Read & Discover: ${esc(b.title)} ${sayBtn()}</h4>${b.html}</div>`;
     case "img": return `<figure><img src="${b.src}" alt="${esc(b.caption)}" loading="lazy"><figcaption>${esc(b.caption)}</figcaption></figure>`;
-    case "table": return `<div class="source"><h4>${esc(b.title)}</h4><table><thead><tr>${b.head.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${b.rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody></table>${b.note ? `<p class="muted">${esc(b.note)}</p>` : ""}</div>`;
-    case "source": return `<div class="source">${b.html}</div>`;
-    case "skills": return `<div class="skills"><h4>${esc(b.title)}</h4>${b.html}</div>`;
-    case "dyk": return `<div class="callout dyk"><b>💡 Did You Know?</b> ${b.html}</div>`;
-    case "local": return `<div class="callout local"><b>📍 Local Lens:</b> ${b.html}</div>`;
-    case "action": return `<div class="callout action"><b>🌱 Take Action:</b> ${b.html}</div>`;
-    case "think": return `<div class="think"><h4>💬 Think & Talk</h4>${b.html}${b.task ? taskBox(b.task) : ""}</div>`;
-    case "tool": return `<div class="tool"><h4>🛠️ ${esc(b.title)}</h4>${b.html}${b.task ? (b.pmi ? taskBox(b.task, [{ k: "p", label: "➕ Plus (good points)" }, { k: "m", label: "➖ Minus (bad points)" }, { k: "i", label: "❓ Interesting (questions)" }]) : taskBox(b.task)) : ""}</div>`;
-    case "activity": return `<div class="activity"><h4>✏️ ${esc(b.title)}</h4>${b.html}${b.task ? taskBox(b.task, undefined, { rows: 6 }) : ""}</div>`;
-    case "video": return `<div class="video"><h4>🎬 Watch & Think</h4><p><b>${esc(b.title)}</b></p>
+    case "table": return `<div class="source" data-speak><h4>${esc(b.title)} ${sayBtn()}</h4><table><thead><tr>${b.head.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${b.rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody></table>${b.note ? `<p class="muted">${esc(b.note)}</p>` : ""}</div>`;
+    case "source": return `<div class="source" data-speak>${sayBtn()}${b.html}</div>`;
+    case "skills": return `<div class="skills" data-speak><h4>${esc(b.title)} ${sayBtn()}</h4>${b.html}</div>`;
+    case "dyk": return `<div class="callout dyk" data-speak><b>💡 Did You Know?</b> ${b.html} ${sayBtn("")}</div>`;
+    case "local": return `<div class="callout local" data-speak><b>📍 Local Lens:</b> ${b.html} ${sayBtn("")}</div>`;
+    case "action": return `<div class="callout action" data-speak><b>🌱 Take Action:</b> ${b.html} ${sayBtn("")}</div>`;
+    case "think": return `<div class="think" data-speak><h4>💬 Think & Talk ${sayBtn()}</h4>${b.html}${b.task ? taskBox(b.task) : ""}</div>`;
+    case "tool": return `<div class="tool" data-speak><h4>🛠️ ${esc(b.title)} ${sayBtn()}</h4>${b.html}${b.task ? (b.pmi ? taskBox(b.task, [{ k: "p", label: "➕ Plus (good points)" }, { k: "m", label: "➖ Minus (bad points)" }, { k: "i", label: "❓ Interesting (questions)" }]) : taskBox(b.task)) : ""}</div>`;
+    case "activity": return `<div class="activity" data-speak><h4>✏️ ${esc(b.title)} ${sayBtn()}</h4>${b.html}${b.task ? taskBox(b.task, undefined, { rows: 6 }) : ""}</div>`;
+    case "video": return `<div class="video" data-speak><h4>🎬 Watch & Think ${sayBtn()}</h4><p><b>${esc(b.title)}</b></p>
       ${b.yt ? `<div class="yt"><iframe src="https://www.youtube-nocookie.com/embed/${b.yt}" title="${esc(b.title)}" allowfullscreen loading="lazy"></iframe></div>` : ""}
       <p class="links"><a href="${b.url}" target="_blank" rel="noopener">▶ Buka video</a>${(b.extra || []).map(([t, h]) => ` · <a href="${h}" target="_blank" rel="noopener">${esc(t)}</a>`).join("")}</p>
       <ol>${b.questions.map((q) => `<li>${esc(q)}</li>`).join("")}</ol>${b.task ? taskBox(b.task) : ""}</div>`;
     case "sort": return renderSort(b);
-    case "rate": return `<div class="activity"><h4>✏️ ${esc(b.title)}</h4><p>${b.html}</p>${renderRate(b)}${taskBox(b.task, [{ k: "text", label: "Jelaskan nilaimu dengan Source Checker (Who? Why? Evidence? Too good to be true?)" }])}</div>`;
+    case "rate": return `<div class="activity" data-speak><h4>✏️ ${esc(b.title)} ${sayBtn()}</h4><p>${b.html}</p>${renderRate(b)}${taskBox(b.task, [{ k: "text", label: "Jelaskan nilaimu dengan Source Checker (Who? Why? Evidence? Too good to be true?)" }])}</div>`;
     case "tracker": return renderTracker(b);
     default: return "";
   }
@@ -216,7 +218,7 @@ function renderBlock(b, u) {
 function renderSort(b) {
   const st = (PROG?.interactive[b.id]) || {};
   const checked = st.checked;
-  return `<div class="sortbox" data-sort="${b.id}"><h4>🧩 ${esc(b.title)}</h4><p class="muted">Pilih kelompok untuk setiap kalimat, lalu tekan <b>Periksa</b>.</p>
+  return `<div class="sortbox" data-sort="${b.id}" data-speak><h4>🧩 ${esc(b.title)} ${sayBtn()}</h4><p class="muted">Pilih kelompok untuk setiap kalimat, lalu tekan <b>Periksa</b>.</p>
     ${b.items.map(([txt, ans], i) => {
       const pick = st.picks?.[i];
       const ok = checked && pick === ans, bad = checked && pick != null && pick !== ans;
@@ -242,6 +244,82 @@ function renderTracker(b) {
     }).join("")}<div class="legend"><span class="s"></span>Tidur (target 9 jam) <span class="m"></span>Aktif (target 60 menit)</div></div></div>`;
 }
 
+// ───────────────────────────── latihan otomatis
+function seededShuffle(arr, seed) {
+  const a = arr.map((x, i) => [x, i]);
+  let h = 0; for (const c of seed) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  for (let i = a.length - 1; i > 0; i--) { h = (Math.imul(h, 1103515245) + 12345) >>> 0; const j = h % (i + 1); [a[i], a[j]] = [a[j], a[i]]; }
+  if (a.length > 1 && a.every(([, i], k) => i === k)) a.push(a.shift());
+  return a;
+}
+function renderPractice(l) {
+  const items = (typeof PRACTICE !== "undefined" && PRACTICE[l.id]) || [];
+  if (!items.length) return "";
+  const r = PROG?.practice?.[l.id];
+  return `<section class="practice" data-practice="${l.id}">
+    <h3>✅ Latihan cepat <small class="muted">— langsung dinilai otomatis</small></h3>
+    ${r ? `<p class="score-old">Nilai terbaikmu: <b>${r.best}/${r.total}</b> (${r.attempts}× mencoba)</p>` : ""}
+    ${items.map((it, i) => {
+      const n = `p${i}`;
+      let body = "";
+      if (it.t === "mc") body = it.o.map((o, j) => `<label><input type="radio" name="${n}" value="${j}"> ${esc(o)}</label>`).join("");
+      else if (it.t === "tf") body = `<div class="tfrow"><label><input type="radio" name="${n}" value="1"> ✔ True</label><label><input type="radio" name="${n}" value="0"> ✘ False</label></div>`;
+      else if (it.t === "fill") body = `<input class="fillin" name="${n}" autocomplete="off" placeholder="Ketik jawabanmu (in English)">`;
+      else if (it.t === "match") {
+        const rights = [...new Set(it.pairs.map((p) => p[1]))];
+        const opts = seededShuffle(rights, l.id + i).map(([x]) => x);
+        body = it.pairs.map(([left], k) => `<div class="mrow"><span>${esc(left)}</span><select name="${n}_${k}"><option value="">— pilih —</option>${opts.map((o) => `<option>${esc(o)}</option>`).join("")}</select></div>`).join("");
+      } else if (it.t === "order") {
+        body = `<ol class="orderlist">${seededShuffle(it.items, l.id + i).map(([x, k]) => `<li data-k="${k}"><span>${esc(x)}</span><button type="button" data-mv="-1" aria-label="naik">▲</button><button type="button" data-mv="1" aria-label="turun">▼</button></li>`).join("")}</ol>`;
+      }
+      return `<fieldset class="pitem" data-i="${i}" data-speak><legend>${i + 1}. ${esc(it.q)} ${sayBtn("")}</legend>${body}<p class="expl" hidden></p></fieldset>`;
+    }).join("")}
+    ${ME.role === "student" ? `<div class="tb-foot"><button type="button" class="btn" data-pcheck>Periksa jawaban</button><span class="status pres"></span></div>` : `<p class="muted">(Pratinjau guru)</p>`}
+  </section>`;
+}
+const norm = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+async function checkPractice(sec) {
+  const lid = sec.dataset.practice;
+  const items = PRACTICE[lid];
+  let score = 0;
+  items.forEach((it, i) => {
+    const fs = sec.querySelector(`.pitem[data-i="${i}"]`);
+    const n = `p${i}`;
+    let ok = false, key = "";
+    if (it.t === "mc" || it.t === "tf") {
+      const v = fs.querySelector(`input[name="${n}"]:checked`)?.value;
+      const want = it.t === "mc" ? String(it.a) : it.a ? "1" : "0";
+      ok = v === want;
+      fs.querySelectorAll("label").forEach((lb) => lb.classList.toggle("key", lb.querySelector("input").value === want));
+      key = it.t === "mc" ? it.o[it.a] : it.a ? "True" : "False";
+    } else if (it.t === "fill") {
+      const v = norm(fs.querySelector("input").value);
+      ok = it.a.some((x) => norm(x) === v);
+      key = it.a[0];
+    } else if (it.t === "match") {
+      ok = true;
+      it.pairs.forEach(([, right], k) => { const sel = fs.querySelector(`select[name="${n}_${k}"]`); const good = sel.value === right; sel.classList.toggle("ok", good); sel.classList.toggle("bad", !good); if (!good) ok = false; });
+      key = it.pairs.map(([a, b]) => `${a} → ${b}`).join(" · ");
+    } else if (it.t === "order") {
+      const ks = [...fs.querySelectorAll(".orderlist li")].map((li) => +li.dataset.k);
+      ok = ks.every((k, j) => k === j);
+      key = it.items.map((x, j) => `${j + 1}. ${x}`).join("  ");
+    }
+    if (ok) score++;
+    fs.classList.toggle("ok", ok); fs.classList.toggle("bad", !ok);
+    const ex = fs.querySelector(".expl"); ex.hidden = false;
+    ex.textContent = (ok ? "✓ Benar! " : `✗ Jawaban yang benar: ${key}. `) + (it.e || "");
+  });
+  const total = items.length;
+  sec.querySelector(".pres").textContent = `Nilaimu: ${score}/${total} ${score === total ? "🏆" : score / total >= 0.7 ? "🎉" : "💪 Coba lagi!"}`;
+  await Store.updateProgress(ME.id, (p) => {
+    p.practice = p.practice || {};
+    const o = p.practice[lid] || { best: 0, attempts: 0 };
+    p.practice[lid] = { best: Math.max(o.best, score), last: score, total, attempts: o.attempts + 1, at: Date.now() };
+  });
+  toast(`Latihan dinilai: ${score}/${total}`);
+}
+
 // ───────────────────────────── halaman pelajaran
 function viewLesson(u, l) {
   const idx = u.lessons.indexOf(l);
@@ -253,6 +331,7 @@ function viewLesson(u, l) {
   <article class="lesson" style="--c:${u.color}">
     <span class="tag">Lesson ${l.code}</span><h1>${esc(l.title)}</h1>
     ${l.blocks.map((b) => renderBlock(b, u)).join("")}
+    ${renderPractice(l)}
   </article>
   <div class="lesson-nav">
     <a class="btn ghost" href="${prev}">← Sebelumnya</a>
@@ -299,7 +378,7 @@ function viewQuiz(u) {
   return shell(`<a class="back" href="#/unit/${u.id}">← Unit ${u.num}: ${esc(u.title)}</a>
   <article class="lesson quiz" style="--c:${u.color}"><span class="tag">Kuis</span><h1>📝 Kuis Unit ${u.num}: ${esc(u.title)}</h1>
   ${q ? `<p class="score-old">Nilai terbaikmu: <b>${q.best}/${q.total}</b> (${q.attempts}× mencoba). Kamu boleh mencoba lagi.</p>` : `<p>Jawab ${u.quiz.length} soal berikut. Nilai langsung keluar setelah kamu mengirim.</p>`}
-  <form id="quiz">${u.quiz.map((it, i) => `<fieldset class="qitem"><legend>${i + 1}. ${esc(it.q)}</legend>${it.o.map((o, j) => `<label><input type="radio" name="q${i}" value="${j}" required> ${esc(o)}</label>`).join("")}<p class="expl" hidden></p></fieldset>`).join("")}
+  <form id="quiz">${u.quiz.map((it, i) => `<fieldset class="qitem" data-speak><legend>${i + 1}. ${esc(it.q)} ${sayBtn("")}</legend>${it.o.map((o, j) => `<label><input type="radio" name="q${i}" value="${j}" required> ${esc(o)}</label>`).join("")}<p class="expl" hidden></p></fieldset>`).join("")}
   ${isS ? `<button class="btn">Kirim jawaban</button>` : `<p class="muted">(Pratinjau guru — kunci: ${u.quiz.map((it, i) => `${i + 1}${"ABCD"[it.a]}`).join(", ")})</p>`}
   </form><div id="quiz-result"></div></article>`, isS ? "#/" : "#/materi");
 }
@@ -314,7 +393,7 @@ function viewReflect(u) {
   <h3>My reflection journal</h3>
   ${u.reflect.journal.map((j, i) => `<label>${esc(j)}<textarea name="j${i}" rows="3">${esc(r.journal[i] || "")}</textarea></label>`).join("")}
   ${isS ? `<button class="btn">Simpan refleksi</button> <span class="status">${r.at ? "Tersimpan " + fmtDate(r.at) : ""}</span>` : ""}</form>
-  ${u.glossary ? `<h3>Glossary</h3><dl class="gloss">${u.glossary.map(([w, m]) => `<dt>${esc(w)}</dt><dd>${esc(m)}</dd>`).join("")}</dl>` : ""}
+  ${u.glossary ? `<h3>Glossary</h3><dl class="gloss">${u.glossary.map(([w, m]) => `<dt><span data-word="${esc(w)}" role="button" class="w">🔊 ${esc(w)}</span></dt><dd>${esc(m)}</dd>`).join("")}</dl>` : ""}
   </article>`, isS ? "#/" : "#/materi");
 }
 
@@ -337,7 +416,7 @@ function taskLink(u, id) {
 function viewGlossary() {
   const all = UNITS.flatMap((u) => u.glossary.map(([w, m]) => ({ w, m, u }))).sort((a, b) => a.w.localeCompare(b.w));
   return shell(`<h1>📖 Glosarium</h1><input class="search" placeholder="Cari kata…" id="gsearch">
-  <dl class="gloss" id="glist">${all.map(({ w, m, u }) => `<div data-w="${esc((w + " " + m).toLowerCase())}"><dt>${esc(w)} <small style="color:${u.color}">Unit ${u.num}</small></dt><dd>${esc(m)}</dd></div>`).join("")}</dl>`, "#/glosarium");
+  <dl class="gloss" id="glist">${all.map(({ w, m, u }) => `<div data-w="${esc((w + " " + m).toLowerCase())}"><dt><span data-word="${esc(w)}" role="button" class="w">🔊 ${esc(w)}</span> <small style="color:${u.color}">Unit ${u.num}</small></dt><dd>${esc(m)}</dd></div>`).join("")}</dl>`, "#/glosarium");
 }
 function viewSkills() {
   return shell(`<h1>🧭 Enam keterampilan Global Perspectives</h1>
@@ -373,8 +452,8 @@ async function viewTeacherHome() {
   const avg = progs.length ? Math.round(progs.reduce((a, p) => a + overall(p).pct, 0) / progs.length) : 0;
   return shell(`<h1>Dasbor guru</h1>${classPicker(cls, c)}
   <div class="kpis"><div><b>${students.length}</b><small>siswa</small></div><div><b>${avg}%</b><small>rata-rata progres</small></div><div><a href="#/guru/tugas"><b>${pending}</b><small>tugas belum dinilai</small></a></div></div>
-  ${students.length ? `<div class="scroll"><table class="list matrix"><thead><tr><th>Siswa</th><th>Total</th>${UNITS.map((u) => `<th style="color:${u.color}">Unit ${u.num}<br><small>pelajaran · kuis</small></th>`).join("")}<th>Terakhir aktif</th></tr></thead><tbody>
-  ${students.map((s, i) => { const p = progs[i]; const o = overall(p); return `<tr><td><a href="#/guru/siswa/${s.id}">${esc(s.name)}</a></td><td>${bar(o.pct)}<small>${o.pct}%</small></td>${UNITS.map((u) => { const st = unitStats(u, p); return `<td><small>${st.done}/${st.total} · ${st.quiz ? st.quiz.best + "/" + st.quiz.total : "–"}</small>${bar(st.pct, u.color)}</td>`; }).join("")}<td><small>${p.updatedAt ? fmtDate(p.updatedAt) : "belum"}</small></td></tr>`; }).join("")}
+  ${students.length ? `<div class="scroll"><table class="list matrix"><thead><tr><th>Siswa</th><th>Total</th>${UNITS.map((u) => `<th style="color:${u.color}">Unit ${u.num}<br><small>pelajaran · kuis · latihan</small></th>`).join("")}<th>Terakhir aktif</th></tr></thead><tbody>
+  ${students.map((s, i) => { const p = progs[i]; const o = overall(p); return `<tr><td><a href="#/guru/siswa/${s.id}">${esc(s.name)}</a></td><td>${bar(o.pct)}<small>${o.pct}%</small></td>${UNITS.map((u) => { const st = unitStats(u, p); return `<td><small>${st.done}/${st.total} · ${st.quiz ? st.quiz.best + "/" + st.quiz.total : "–"}${st.prac != null ? ` · ✅${st.prac}%` : ""}</small>${bar(st.pct, u.color)}</td>`; }).join("")}<td><small>${p.updatedAt ? fmtDate(p.updatedAt) : "belum"}</small></td></tr>`; }).join("")}
   </tbody></table></div>` : `<div class="box">Belum ada siswa. <a href="#/guru/siswa">Tambahkan siswa →</a></div>`}`, "#/guru");
 }
 
@@ -437,7 +516,7 @@ async function viewTeacherStudent(sid) {
     const st = unitStats(u, p);
     const r = p.reflect[u.id];
     const tasks = allTasks(u).filter((t) => p.answers[t.id]);
-    return `<details class="unitdet" style="--c:${u.color}" ${tasks.length ? "open" : ""}><summary><b>Unit ${u.num}: ${esc(u.title)}</b> <small>${st.done}/${st.total} pelajaran · kuis ${st.quiz ? `${st.quiz.best}/${st.quiz.total} (${st.quiz.attempts}×)` : "–"} · ${st.sent}/${st.tasks} tugas</small></summary>
+    return `<details class="unitdet" style="--c:${u.color}" ${tasks.length ? "open" : ""}><summary><b>Unit ${u.num}: ${esc(u.title)}</b> <small>${st.done}/${st.total} pelajaran · kuis ${st.quiz ? `${st.quiz.best}/${st.quiz.total} (${st.quiz.attempts}×)` : "–"} · latihan ${st.prac != null ? `${st.prac}% (${st.pracDone}/${st.total})` : "–"} · ${st.sent}/${st.tasks} tugas</small></summary>
     ${tasks.map((t) => { const a = p.answers[t.id]; return `<div class="sub"><div class="subhead">${esc(t.label)} <small>${fmtDate(a.at)}</small></div>${answerView(a.v)}${gradeForm(sid, u, t, a)}</div>`; }).join("") || `<p class="muted">Belum ada tugas.</p>`}
     ${r ? `<div class="sub"><div class="subhead">🪞 Refleksi</div><ul>${u.reflect.checks.map((c, i) => `<li>${r.checks[i] ? "✅" : "⬜"} ${esc(c)}</li>`).join("")}</ul>${u.reflect.journal.map((j, i) => (r.journal[i] ? `<div class="ans"><small>${esc(j)}</small><div>${esc(r.journal[i])}</div></div>` : "")).join("")}</div>` : ""}
     </details>`;
@@ -558,6 +637,8 @@ document.addEventListener("submit", async (e) => {
 document.addEventListener("click", async (e) => {
   const t = e.target.closest("button, [data-act]");
   if (!t) return;
+  if (t.hasAttribute("data-pcheck")) { return checkPractice(t.closest("[data-practice]")); }
+  if (t.dataset.mv) { const li = t.closest("li"); const sib = +t.dataset.mv < 0 ? li.previousElementSibling : li.nextElementSibling; if (sib) (+t.dataset.mv < 0 ? sib.before(li) : sib.after(li)); li.closest(".pitem")?.classList.remove("ok", "bad"); return; }
   const act = t.dataset.act;
   if (act === "logout") { await Store.logout(); location.hash = ""; boot(); }
   else if (act === "done") {
@@ -597,13 +678,13 @@ document.addEventListener("click", async (e) => {
   else if (act === "csv") {
     const students = await Store.studentsOf(CUR_CLASS);
     const cp = await Store.classProgress(CUR_CLASS);
-    const head = ["Nama", "Progres total %", ...UNITS.flatMap((u) => [`U${u.num} pelajaran`, `U${u.num} kuis`, `U${u.num} tugas dikirim`, `U${u.num} rata-rata nilai tugas`])];
+    const head = ["Nama", "Progres total %", ...UNITS.flatMap((u) => [`U${u.num} pelajaran`, `U${u.num} kuis`, `U${u.num} latihan %`, `U${u.num} tugas dikirim`, `U${u.num} rata-rata nilai tugas`])];
     const rows = students.map((s) => {
       const p = cp[s.id];
       return [s.name, overall(p).pct, ...UNITS.flatMap((u) => {
         const st = unitStats(u, p);
         const gs = allTasks(u).map((t) => p.answers[t.id]?.grade).filter(Boolean);
-        return [`${st.done}/${st.total}`, st.quiz ? `${st.quiz.best}/${st.quiz.total}` : "", st.sent, gs.length ? (gs.reduce((a, b) => a + b, 0) / gs.length).toFixed(1) : ""];
+        return [`${st.done}/${st.total}`, st.quiz ? `${st.quiz.best}/${st.quiz.total}` : "", st.prac ?? "", st.sent, gs.length ? (gs.reduce((a, b) => a + b, 0) / gs.length).toFixed(1) : ""];
       })];
     });
     const csv = "\ufeff" + [head, ...rows].map((r) => r.map((x) => `"${String(x).replace(/"/g, '""')}"`).join(";")).join("\r\n");

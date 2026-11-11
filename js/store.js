@@ -31,7 +31,7 @@ const LocalStore = (() => {
     do { c = "GP6-" + Array.from({ length: 4 }, () => abc[Math.floor(Math.random() * abc.length)]).join(""); } while (db.classes[c]);
     return c;
   }
-  const blankProgress = () => ({ lessons: {}, answers: {}, quiz: {}, reflect: {}, interactive: {}, updatedAt: null });
+  const blankProgress = () => ({ lessons: {}, answers: {}, quiz: {}, reflect: {}, interactive: {}, practice: {}, updatedAt: null });
 
   return {
     mode: canLS ? "local" : "memory",
@@ -193,7 +193,7 @@ const SupabaseStore = (cfg) => {
     if (body && body.error) throw new Error(body.error);
     return body;
   }
-  const blank = () => ({ lessons: {}, answers: {}, quiz: {}, reflect: {}, interactive: {}, updatedAt: null });
+  const blank = () => ({ lessons: {}, answers: {}, quiz: {}, reflect: {}, interactive: {}, practice: {}, updatedAt: null });
   function merge(r) {
     const p = Object.assign(blank(), r?.data || {});
     p.updatedAt = r?.updatedAt || null;
